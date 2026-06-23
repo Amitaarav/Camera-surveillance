@@ -1,3 +1,9 @@
+# Real-Time Camera Surveillance Dashboard
+
+A production-oriented surveillance platform that streams RTSP camera feeds to the browser using WebRTC, performs real-time person detection, and delivers live alerts through WebSockets.
+
+The system is designed with fault isolation, scalability, and observability in mind. Video streaming, detection, and application services are decoupled to ensure that failures in one component do not impact the rest of the platform.
+
 # Turborepo starter
 
 This Turborepo starter is maintained by the Turborepo core team.
@@ -16,8 +22,6 @@ This Turborepo includes the following packages/apps:
 
 ### Apps and Packages
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
 - `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
 - `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
 - `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
