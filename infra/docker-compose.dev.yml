@@ -1,0 +1,108 @@
+services:
+  postgres:
+    container_name: surveillance-postgres
+    image: postgres:16-alpine
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    container_name: surveillance-redis
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mediamtx:
+    container_name: surveillance-mediamtx
+    image: bluenviron/mediamtx:latest
+    environment:
+      MTX_API: "yes"
+    ports:
+      - "8554:8554" # RTSP
+      - "1935:1935" # RTMP
+      - "8888:8888" # HLS
+      - "8889:8889" # WebRTC
+      - "9997:9997" # API
+
+  backend:
+    container_name: surveillance-backend
+    build:
+      context: ..
+      dockerfile: apps/backend/Dockerfile
+      target: deps
+    working_dir: /app/apps/backend
+    command: bun run --hot src/server.ts
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../apps/backend/src:/app/apps/backend/src
+      - ../packages/database/src:/app/packages/database/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    container_name: surveillance-worker
+    build:
+      context: ../apps/worker
+      dockerfile: Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379
+      MEDIAMTX_API_URL: http://mediamtx:9997
+      SIMULATE_DETECTION: "false"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # inference:
+  #   container_name: surveillance-inference
+  #   build:
+  #     context: ../apps/inference
+  #     dockerfile: Dockerfile
+  #   ipc: host
+  #   environment:
+  #     REDIS_URL: redis://redis:6379
+  #     MODEL: yolov8n.pt
+  #     SAMPLE_INTERVAL: 5
+  #     CONFIDENCE: 0.4
+  #   volumes:
+  #     - ../apps/inference:/workspace
+  #   working_dir: /workspace
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #     mediamtx:
+  #       condition: service_started
+  #   restart: unless-stopped
+
+  ffmpeg-mock:
+    container_name: surveillance-ffmpeg
+    image: jrottenberg/ffmpeg:4.4-alpine
+    command: -re -stream_loop -1 -i https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4 -c copy -f rtsp rtsp://mediamtx:8554/mystream
+    depends_on:
+      - mediamtx
+
+volumes:
+  pgdata:
+  redisdata:

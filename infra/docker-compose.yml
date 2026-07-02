@@ -1,0 +1,112 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: surveillance-postgres
+    env_file: .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: surveillance-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: surveillance-mediamtx
+    environment:
+      MTX_API: "yes"
+    ports:
+      - "8554:8554" # RTSP
+      - "1935:1935" # RTMP
+      - "8888:8888" # HLS
+      - "8889:8889" # WebRTC / WHEP
+      - "9997:9997" # API
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ..
+      dockerfile: apps/backend/Dockerfile
+    container_name: surveillance-backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 3000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../apps/worker
+      dockerfile: Dockerfile
+    container_name: surveillance-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      MEDIAMTX_API_URL: http://mediamtx:9997
+      SIMULATE_DETECTION: "false"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+    restart: unless-stopped
+
+  inference:
+    build:
+      context: ../apps/inference
+      dockerfile: Dockerfile
+    container_name: surveillance-inference
+    ipc: host
+    environment:
+      REDIS_URL: redis://redis:6379
+      MODEL: yolov8n.pt
+      SAMPLE_INTERVAL: 5
+      CONFIDENCE: 0.4
+    depends_on:
+      redis:
+        condition: service_healthy
+      mediamtx:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../apps/frontend
+      dockerfile: Dockerfile
+    container_name: surveillance-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
