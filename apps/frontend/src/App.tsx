@@ -1,10 +1,14 @@
-function App() {
+import { QueryClientProvider } from "@tanstack/react-query";
+import { RouterProvider } from "@tanstack/react-router";
+import { queryClient } from "./lib/query-client";
+import { router } from "./router";
 
+function App() {
   return (
-    <>
-      <h1 className="text-6xl bg-green-500"> Hi There!</h1>
-    </>
-  )
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
 }
 
-export default App
+export default App;
